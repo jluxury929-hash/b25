@@ -1,15 +1,15 @@
 /**
  * ===============================================================================
- * APEX TITAN v169.0 (THE OMNI-OVERLORD - MULTI-CHAIN SINGULARITY)
+ * APEX TITAN v172.0 (THE OMNI-LEVIATHAN - ABSOLUTE FINALITY)
  * ===============================================================================
- * STATUS: TOTAL MAXIMIZATION (ETH | BASE | POLY | ARB)
- * MERGED FEATURES: 
- * - Multi-Chain Singularity (From v127.0: ETH, BASE, POLY, ARB simultaneously)
- * - Atomic Super-Clustering (From v168.0: 20+ Loops per Transaction)
- * - Profit Redirection (From v57.0: Target Recipient 0x458f94...71DE)
- * - Optimal Principal Calculus (From v168.0: Slippage-Limited Scaling)
- * - Abyssal-Tier Gas Monopoly (From v168.0: Block Mastery Tiers)
- * - Infinite Graph Cycle Discovery (From v168.0: Bellman-Ford 12-Hop Complexity)
+ * STATUS: TOTAL MAXIMIZATION (MTE - MAXIMUM THEORETICAL EXTRACTION)
+ * MERGED ARCHITECTURE: 
+ * 1. DYNAMIC FLASH SQUEEZE (v171.0): 100% balance-linked loan principal scaling.
+ * 2. MULTI-CHAIN COMMAND (v169.0): Simultaneous ETH, BASE, POLY, ARB dominance.
+ * 3. API SERVER (v57.1): Live /logs and /status for real-time monitoring.
+ * 4. PROFIT REDIRECTION (v57.0): Excess yield hard-coded to 0x458f94...71DE.
+ * 5. ABYSSAL GAS (v168.0): Economic exclusion zone (500 Gwei ETH / 10 Gwei Base).
+ * 6. SHARED MEMORY: Zero-latency inter-process metrics and nonces.
  * ===============================================================================
  */
 
@@ -34,18 +34,20 @@ process.on('uncaughtException', (err) => {
 
 const TXT = { green: "\x1b[32m", gold: "\x1b[38;5;220m", reset: "\x1b[0m", red: "\x1b[31m", cyan: "\x1b[36m", bold: "\x1b[1m" };
 
-// Shared Memory Infrastructure (Multi-Chain Physical Speed Limit)
-// [0]=ETH_Nonce, [1]=BASE_Nonce, [2]=POLY_Nonce, [3]=ARB_Nonce, [4]=TotalStrikes
-const sharedBuffer = new SharedArrayBuffer(64);
+// Shared Memory Infrastructure (Physical Speed Limit)
+// [0..3]=Nonces (ETH, BASE, POLY, ARB), [4]=TotalStrikes
+const sharedBuffer = new SharedArrayBuffer(128);
 const stateMetrics = new Int32Array(sharedBuffer); 
+
+const LOG_HISTORY = [];
+const MAX_LOGS = 200;
 
 const CONFIG = {
     PRIVATE_KEY: process.env.PRIVATE_KEY,
     EXECUTOR: process.env.EXECUTOR_ADDRESS,
     PROFIT_RECIPIENT: "0x458f94e935f829DCAD18Ae0A18CA5C3E223B71DE", // v57.0 Target
     PORT: process.env.PORT || 8080,
-    GAS_LIMIT: 25000000n, // Support for massive Atomic Super-Clusters (20+ Paths)
-    RESERVE_BUFFER: 0n, // 100% Capital Utilization
+    GAS_LIMIT: 25000000n, // Support for massive Atomic Super-Clusters
     CORE_TOKENS: [
         "ETH", "USDC", "WBTC", "DAI", "CBETH", "USDT", "PEPE", "DEGEN", "AERO", 
         "VIRTUAL", "ANIME", "WAI", "MOG", "TOSHI", "BRETT", "KEYCAT", "HIGHER",
@@ -54,68 +56,65 @@ const CONFIG = {
     ],
     NETWORKS: {
         ETHEREUM: { 
-            chainId: 1, 
-            idx: 0,
+            chainId: 1, idx: 0,
             rpc: ["https://eth.llamarpc.com", "https://rpc.ankr.com/eth", "https://1rpc.io/eth"], 
             wss: "wss://eth.llamarpc.com", 
-            relays: ["https://relay.flashbots.net", "https://builder0x69.io", "https://rpc.beaverbuild.org"],
-            minPriority: parseEther("500.0", "gwei"), // Abyssal Monopoly
-            isL2: false
+            relays: ["https://relay.flashbots.net", "https://builder0x69.io"],
+            minPriority: parseEther("500.0", "gwei") // Abyssal Monopoly
         },
         BASE: { 
-            chainId: 8453, 
-            idx: 1,
-            rpc: ["https://mainnet.base.org", "https://base.merkle.io", "https://1rpc.io/base", "https://base-rpc.publicnode.com"], 
+            chainId: 8453, idx: 1,
+            rpc: ["https://mainnet.base.org", "https://base.merkle.io", "https://1rpc.io/base"], 
             wss: "wss://base-rpc.publicnode.com",
-            minPriority: parseEther("10.0", "gwei"), // Abyssal Monopoly
-            isL2: true
+            minPriority: parseEther("10.0", "gwei") // Abyssal Monopoly
         },
         POLYGON: {
-            chainId: 137,
-            idx: 2,
-            rpc: ["https://polygon-rpc.com", "https://rpc-mainnet.maticvigil.com", "https://1rpc.io/polygon"],
+            chainId: 137, idx: 2,
+            rpc: ["https://polygon-rpc.com", "https://rpc-mainnet.maticvigil.com"],
             wss: "wss://polygon-bor-rpc.publicnode.com",
-            minPriority: parseEther("200.0", "gwei"), // Abyssal Monopoly
-            isL2: true
+            minPriority: parseEther("200.0", "gwei") // Abyssal Monopoly
         },
         ARBITRUM: {
-            chainId: 42161,
-            idx: 3,
-            rpc: ["https://arb1.arbitrum.io/rpc", "https://arbitrum.llamarpc.com", "https://1rpc.io/arbitrum"],
+            chainId: 42161, idx: 3,
+            rpc: ["https://arb1.arbitrum.io/rpc", "https://arbitrum.llamarpc.com"],
             wss: "wss://arbitrum-one.publicnode.com",
-            minPriority: parseEther("50.0", "gwei"), // Abyssal Monopoly
-            isL2: true
+            minPriority: parseEther("50.0", "gwei") // Abyssal Monopoly
         }
     }
 };
-
-const LOG_HISTORY = [];
 
 function sanitize(k) {
     let s = (k || "").trim().replace(/['" \n\r]+/g, '');
     return s.startsWith("0x") ? s : "0x" + s;
 }
 
+function broadcastLog(level, text, chain = "SYSTEM") {
+    const entry = { timestamp: new Date().toLocaleTimeString(), level, text, chain };
+    LOG_HISTORY.unshift(entry);
+    if (LOG_HISTORY.length > MAX_LOGS) LOG_HISTORY.pop();
+    const color = level === 'SUCCESS' ? TXT.green : level === 'ERROR' ? TXT.red : TXT.cyan;
+    process.stdout.write(`${color}[${chain}] ${text}${TXT.reset}\n`);
+}
+
 if (cluster.isPrimary) {
     console.clear();
     console.log(`${TXT.gold}${TXT.bold}╔════════════════════════════════════════════════════════╗`);
-    console.log(`║    ⚡ APEX TITAN v169.0 | OMNI-OVERLORD SINGULARITY  ║`);
-    console.log(`║    MODE: MULTI-CHAIN CLUSTER | ABYSSAL GAS MONOPOLY   ║`);
-    console.log(`║    CHAINS: ETH | BASE | POLY | ARB (GOD-MODE ACTIVE)  ║`);
+    console.log(`║    ⚡ APEX TITAN v172.0 | THE OMNI-LEVIATHAN        ║`);
+    console.log(`║    MODE: MULTI-CHAIN DYNAMIC FLASH LOAN SQUEEZE       ║`);
+    console.log(`║    API: /logs & /status ACTIVE ON PORT ${CONFIG.PORT}       ║`);
     console.log(`╚════════════════════════════════════════════════════════╝${TXT.reset}\n`);
 
     async function setupMaster() {
         const wallet = new Wallet(sanitize(CONFIG.PRIVATE_KEY));
         
-        // Initialize Nonces across all chains simultaneously
         await Promise.all(Object.entries(CONFIG.NETWORKS).map(async ([name, net]) => {
             try {
                 const provider = new JsonRpcProvider(net.rpc[0]);
                 const nonce = await provider.getTransactionCount(wallet.address, 'pending');
                 Atomics.store(stateMetrics, net.idx, nonce);
-                console.log(`${TXT.green}✅ [${name}] Sentry Armed. Nonce: ${nonce}${TXT.reset}`);
+                broadcastLog('INFO', `Sentry Armed. Initial Nonce: ${nonce}`, name);
             } catch (e) {
-                console.error(`${TXT.red}❌ [${name}] Init Failed: ${e.message}${TXT.reset}`);
+                broadcastLog('ERROR', `Init Failed: ${e.message}`, name);
             }
         }));
 
@@ -123,19 +122,22 @@ if (cluster.isPrimary) {
             res.setHeader('Access-Control-Allow-Origin', '*');
             if (req.url === '/logs') {
                 res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify(LOG_HISTORY.slice(0, 100)));
+                res.end(JSON.stringify(LOG_HISTORY));
             } else if (req.url === '/status') {
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ 
-                    status: "OMNI_OVERLORD_FINALITY", 
+                    status: "OMNI_LEVIATHAN_ACTIVE", 
                     nonces: { 
                         eth: Atomics.load(stateMetrics, 0), 
-                        base: Atomics.load(stateMetrics, 1),
-                        poly: Atomics.load(stateMetrics, 2),
-                        arb: Atomics.load(stateMetrics, 3)
+                        base: Atomics.load(stateMetrics, 1), 
+                        poly: Atomics.load(stateMetrics, 2), 
+                        arb: Atomics.load(stateMetrics, 3) 
                     },
-                    strikes: Atomics.load(stateMetrics, 4)
+                    total_strikes: Atomics.load(stateMetrics, 4),
+                    uptime: Math.floor(process.uptime())
                 }));
+            } else {
+                res.writeHead(404); res.end();
             }
         }).listen(CONFIG.PORT);
 
@@ -143,11 +145,7 @@ if (cluster.isPrimary) {
     }
 
     cluster.on('message', (worker, msg) => {
-        if (msg.type === 'LOG') {
-            LOG_HISTORY.unshift({ time: new Date().toLocaleTimeString(), ...msg });
-            if (LOG_HISTORY.length > 500000) LOG_HISTORY.pop();
-            process.stdout.write(`${TXT.cyan}[${msg.chain}] ${msg.text}${TXT.reset}\n`);
-        }
+        if (msg.type === 'LOG') broadcastLog(msg.level, msg.text, msg.chain);
     });
 
     setupMaster();
@@ -158,12 +156,12 @@ if (cluster.isPrimary) {
 async function runWorker() {
     const chainName = process.env.TARGET_CHAIN;
     const net = CONFIG.NETWORKS[chainName];
-    const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 1000000, timeout: 1, noDelay: true });
     const provider = new FallbackProvider(net.rpc.map(url => new JsonRpcProvider(url)));
     const wallet = new Wallet(sanitize(CONFIG.PRIVATE_KEY), provider);
     const iface = new Interface(["function executeComplexPath(string[] path, uint256 amount)"]);
     const localMetrics = new Int32Array(process.env.SHARED_METRICS);
     const nIdx = net.idx;
+    const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 1000000, timeout: 1, noDelay: true });
 
     const log = (text, level = 'INFO') => process.send({ type: 'LOG', chain: chainName, text, level });
 
@@ -181,40 +179,44 @@ async function runWorker() {
         const ws = new WebSocket(net.wss);
         ws.on('open', () => {
             ws.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_subscribe", params: ["newPendingTransactions"] }));
-            log(`Abyssal Sentry Link established via ${net.wss.split('/')[2]}`);
+            log("Omni-Leviathan Link Established.");
         });
         
-        provider.on('block', () => executeOmniStrike(chainName, net, wallet, provider, relayers, iface, localMetrics, nIdx, log).catch(() => {}));
+        provider.on('block', () => executeOmniStrike(chainName, net, wallet, provider, relayers, iface, localMetrics, nIdx, httpAgent, log).catch(() => {}));
 
         ws.on('message', async (data) => {
-            try { if (JSON.parse(data).params?.result) executeOmniStrike(chainName, net, wallet, provider, relayers, iface, localMetrics, nIdx, log).catch(() => {}); } catch (e) {}
+            try {
+                const payload = JSON.parse(data);
+                if (payload.params?.result) executeOmniStrike(chainName, net, wallet, provider, relayers, iface, localMetrics, nIdx, httpAgent, log).catch(() => {});
+            } catch (e) {}
         });
         ws.on('close', () => setTimeout(connectWs, 1));
     };
     connectWs();
 }
 
-async function executeOmniStrike(name, net, wallet, provider, relayers, iface, sharedMetrics, nIdx, log) {
+async function executeOmniStrike(name, net, wallet, provider, relayers, iface, sharedMetrics, nIdx, agent, log) {
     try {
         const [bal, feeData] = await Promise.all([provider.getBalance(wallet.address), provider.getFeeData()]);
-        if (bal < parseEther("0.000001")) return;
+        if (bal < parseEther("0.0001")) return;
 
-        // --- ABYSSAL GAS MONOPOLY (Strict Sovereign Tiers) ---
+        // --- ABYSSAL GAS MONOPOLY ---
         const baseGasPrice = feeData.gasPrice || parseEther("0.01", "gwei");
         let priorityFee = net.minPriority; 
-
-        // Monopoly Multiplier: Force #1 inclusion in Block Header
-        const maxFee = baseGasPrice + (priorityFee * 100n); 
+        const maxFee = baseGasPrice + (priorityFee * 100n); // Abyssal Factor
         const totalGasCost = CONFIG.GAS_LIMIT * maxFee;
         
-        const availableForFee = bal - totalGasCost;
-        if (availableForFee <= 0n) return;
+        const availableForPremium = bal - totalGasCost;
+        if (availableForPremium <= 0n) return;
 
-        // CALCULUS: SQRT(K) OPTIMAL PRINCIPAL
-        const optimalPrincipal = (availableForFee * 100000n) / 9n; 
-        const actualFeeValue = (optimalPrincipal * 9n) / 100000n;
+        /**
+         * --- MAX FLASH LOAN SQUEEZE (DYNAMIC BALANCE LOGIC) ---
+         * Principal = Available_ETH / 0.0009
+         * This forces Aave to grant the absolute maximum loan supported by your ETH balance.
+         */
+        const optimalPrincipal = (availableForPremium * 10000n) / 9n;
+        const premiumToWrap = (optimalPrincipal * 9n) / 10000n; // Exact 0.09% fee
 
-        // ABYSSAL SUPER-CLUSTERING DISPATCH
         CONFIG.CORE_TOKENS.forEach(async (token, index) => {
             if (index >= 1000) return; // Millennium Strike Surface
 
@@ -224,7 +226,7 @@ async function executeOmniStrike(name, net, wallet, provider, relayers, iface, s
             const tx = {
                 to: CONFIG.EXECUTOR || wallet.address,
                 data: CONFIG.EXECUTOR ? iface.encodeFunctionData("executeComplexPath", [path, optimalPrincipal]) : "0x",
-                value: actualFeeValue,
+                value: premiumToWrap, 
                 gasLimit: CONFIG.GAS_LIMIT,
                 maxFeePerGas: maxFee,
                 maxPriorityFeePerGas: priorityFee,
@@ -237,11 +239,11 @@ async function executeOmniStrike(name, net, wallet, provider, relayers, iface, s
             const isValid = await provider.call({ to: tx.to, data: tx.data, value: tx.value, from: wallet.address }).then(r => r !== '0x').catch(() => false);
             if (!isValid) return;
 
-            // --- ZERO-COPY BINARY DISPATCH ---
+            // ZERO-COPY BINARY DISPATCH
             wallet.signTransaction(tx).then(signed => {
                 net.rpc.forEach(url => {
                     const protocol = url.startsWith('https') ? https : http;
-                    const req = protocol.request(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Overlord': 'Final' } }, (res) => res.resume());
+                    const req = protocol.request(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, agent }, (res) => res.resume());
                     req.on('error', () => {});
                     req.write(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_sendRawTransaction", params: [signed] }));
                     req.end();
@@ -250,11 +252,11 @@ async function executeOmniStrike(name, net, wallet, provider, relayers, iface, s
                 if (relayers.length > 0 && name === "ETHEREUM") {
                     relayers.forEach(r => r.sendBundle([{ signer: wallet, transaction: tx }], provider.blockNumber + 1).catch(() => {}));
                 }
-                Atomics.add(sharedMetrics, 4, 1);
+                Atomics.add(sharedMetrics, 4, 1); // Increment Strikes
             });
         });
 
-        log(`OMNI-STRIKE: [${name}] Super-Cluster Fired | Nonce: ${Atomics.load(sharedMetrics, nIdx)}`, 'SUCCESS');
+        log(`OMNI-LEVIATHAN STRIKE: [${name}] Super-Cluster Fired | Loan Linked to ${formatEther(bal)} ETH`, 'SUCCESS');
 
     } catch (e) {}
 }
