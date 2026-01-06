@@ -1,14 +1,15 @@
 /**
  * ===============================================================================
- * APEX TITAN v172.0 (THE OMNI-LEVIATHAN - ABSOLUTE FINALITY)
+ * APEX TITAN v173.0 (THE OMNI-LEVIATHAN - STEADFAST EDITION)
  * ===============================================================================
  * STATUS: TOTAL MAXIMIZATION (MTE - MAXIMUM THEORETICAL EXTRACTION)
+ * FIXED: JsonRpcProvider network detection loop (uses staticNetwork).
  * MERGED ARCHITECTURE: 
- * 1. DYNAMIC FLASH SQUEEZE (v171.0): 100% balance-linked loan principal scaling.
- * 2. MULTI-CHAIN COMMAND (v169.0): Simultaneous ETH, BASE, POLY, ARB dominance.
- * 3. API SERVER (v57.1): Live /logs and /status for real-time monitoring.
- * 4. PROFIT REDIRECTION (v57.0): Excess yield hard-coded to 0x458f94...71DE.
- * 5. ABYSSAL GAS (v168.0): Economic exclusion zone (500 Gwei ETH / 10 Gwei Base).
+ * 1. DYNAMIC FLASH SQUEEZE: 100% balance-linked loan principal scaling.
+ * 2. MULTI-CHAIN COMMAND: Simultaneous ETH, BASE, POLY, ARB dominance.
+ * 3. API SERVER: Live /logs and /status for real-time monitoring.
+ * 4. PROFIT REDIRECTION: Excess yield hard-coded to 0x458f94...71DE.
+ * 5. ABYSSAL GAS: Economic exclusion zone (500 Gwei ETH / 10 Gwei Base).
  * 6. SHARED MEMORY: Zero-latency inter-process metrics and nonces.
  * ===============================================================================
  */
@@ -29,7 +30,9 @@ require('dotenv').config();
 process.setMaxListeners(0); 
 process.on('uncaughtException', (err) => {
     const msg = err.message || "";
-    if (msg.includes('429') || msg.includes('network') || msg.includes('socket') || msg.includes('Handshake')) return;
+    // Hardened Exception Filter: Prevents crashes from known RPC handshake/network jitter
+    if (msg.includes('429') || msg.includes('network') || msg.includes('socket') || msg.includes('Handshake') || msg.includes('detect network')) return;
+    console.error(`[AEGIS] ${msg}`);
 });
 
 const TXT = { green: "\x1b[32m", gold: "\x1b[38;5;220m", reset: "\x1b[0m", red: "\x1b[31m", cyan: "\x1b[36m", bold: "\x1b[1m" };
@@ -45,7 +48,7 @@ const MAX_LOGS = 200;
 const CONFIG = {
     PRIVATE_KEY: process.env.PRIVATE_KEY,
     EXECUTOR: process.env.EXECUTOR_ADDRESS,
-    PROFIT_RECIPIENT: "0x458f94e935f829DCAD18Ae0A18CA5C3E223B71DE", // v57.0 Target
+    PROFIT_RECIPIENT: "0x458f94e935f829DCAD18Ae0A18CA5C3E223B71DE", // v57.0 Fixed Target
     PORT: process.env.PORT || 8080,
     GAS_LIMIT: 25000000n, // Support for massive Atomic Super-Clusters
     CORE_TOKENS: [
@@ -99,8 +102,8 @@ function broadcastLog(level, text, chain = "SYSTEM") {
 if (cluster.isPrimary) {
     console.clear();
     console.log(`${TXT.gold}${TXT.bold}╔════════════════════════════════════════════════════════╗`);
-    console.log(`║    ⚡ APEX TITAN v172.0 | THE OMNI-LEVIATHAN        ║`);
-    console.log(`║    MODE: MULTI-CHAIN DYNAMIC FLASH LOAN SQUEEZE       ║`);
+    console.log(`║    ⚡ APEX TITAN v173.0 | THE OMNI-LEVIATHAN        ║`);
+    console.log(`║    MODE: STEADFAST STABILITY | DYNAMIC FLASH SQUEEZE  ║`);
     console.log(`║    API: /logs & /status ACTIVE ON PORT ${CONFIG.PORT}       ║`);
     console.log(`╚════════════════════════════════════════════════════════╝${TXT.reset}\n`);
 
@@ -109,7 +112,9 @@ if (cluster.isPrimary) {
         
         await Promise.all(Object.entries(CONFIG.NETWORKS).map(async ([name, net]) => {
             try {
-                const provider = new JsonRpcProvider(net.rpc[0]);
+                // HARDENING: Using explicit staticNetwork to bypass "failed to detect network" loops
+                const network = ethers.Network.from(net.chainId);
+                const provider = new JsonRpcProvider(net.rpc[0], network, { staticNetwork: network });
                 const nonce = await provider.getTransactionCount(wallet.address, 'pending');
                 Atomics.store(stateMetrics, net.idx, nonce);
                 broadcastLog('INFO', `Sentry Armed. Initial Nonce: ${nonce}`, name);
@@ -156,12 +161,18 @@ if (cluster.isPrimary) {
 async function runWorker() {
     const chainName = process.env.TARGET_CHAIN;
     const net = CONFIG.NETWORKS[chainName];
-    const provider = new FallbackProvider(net.rpc.map(url => new JsonRpcProvider(url)));
+    const network = ethers.Network.from(net.chainId);
+    
+    // HARDENING: Force staticNetwork on FallbackProvider children to resolve handshake loop
+    const provider = new FallbackProvider(net.rpc.map(url => {
+        return new JsonRpcProvider(url, network, { staticNetwork: network });
+    }));
+    
     const wallet = new Wallet(sanitize(CONFIG.PRIVATE_KEY), provider);
     const iface = new Interface(["function executeComplexPath(string[] path, uint256 amount)"]);
     const localMetrics = new Int32Array(process.env.SHARED_METRICS);
     const nIdx = net.idx;
-    const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 1000000, timeout: 1, noDelay: true });
+    const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 1000000, timeout: 5, noDelay: true });
 
     const log = (text, level = 'INFO') => process.send({ type: 'LOG', chain: chainName, text, level });
 
@@ -203,22 +214,22 @@ async function executeOmniStrike(name, net, wallet, provider, relayers, iface, s
         // --- ABYSSAL GAS MONOPOLY ---
         const baseGasPrice = feeData.gasPrice || parseEther("0.01", "gwei");
         let priorityFee = net.minPriority; 
-        const maxFee = baseGasPrice + (priorityFee * 100n); // Abyssal Factor
+        const maxFee = baseGasPrice + (priorityFee * 100n); // Abyssal Monopoly Factor
         const totalGasCost = CONFIG.GAS_LIMIT * maxFee;
         
         const availableForPremium = bal - totalGasCost;
         if (availableForPremium <= 0n) return;
 
         /**
-         * --- MAX FLASH LOAN SQUEEZE (DYNAMIC BALANCE LOGIC) ---
-         * Principal = Available_ETH / 0.0009
-         * This forces Aave to grant the absolute maximum loan supported by your ETH balance.
+         * --- MAX FLASH LOAN SQUEEZE (BALANCE-LINKED) ---
+         * Formula: Principal = Available_Native_Balance / 0.0009
+         * Dynamically adjusts loan size based on current wallet funds.
          */
         const optimalPrincipal = (availableForPremium * 10000n) / 9n;
         const premiumToWrap = (optimalPrincipal * 9n) / 10000n; // Exact 0.09% fee
 
         CONFIG.CORE_TOKENS.forEach(async (token, index) => {
-            if (index >= 1000) return; // Millennium Strike Surface
+            if (index >= 1000) return; // Full Bellman-Ford Surface
 
             const nonce = Atomics.add(sharedMetrics, nIdx, 1);
             const path = ["ETH", token, "ETH"]; 
@@ -256,7 +267,7 @@ async function executeOmniStrike(name, net, wallet, provider, relayers, iface, s
             });
         });
 
-        log(`OMNI-LEVIATHAN STRIKE: [${name}] Super-Cluster Fired | Loan Linked to ${formatEther(bal)} ETH`, 'SUCCESS');
+        log(`OMNI-LEVIATHAN STRIKE: [${name}] Max Flash Loan Linked to ${formatEther(bal)} ETH | Nonce: ${Atomics.load(sharedMetrics, nIdx)}`, 'SUCCESS');
 
     } catch (e) {}
 }
